@@ -4,7 +4,7 @@ A fully local image bingo card maker, built with plain HTML, CSS, and JavaScript
 
 ## Use
 
-Open `index.html` in a modern browser, or serve this folder with any static web server. Add pictures in bulk (sorted naturally by filename), or click a numbered tile to assign or replace its picture. Entry numbers identify pictures; cards display images rather than numbers by default.
+Open `index.html` in a modern browser, or serve this folder with any static web server. Use **Choose multiple images**, the visible multi-file picker, or drag a group of image files into the upload area to add pictures in bulk (sorted naturally by filename). Hold Ctrl/Command or Shift in the file picker to select several images. Bulk uploads fill empty entries without replacing existing pictures, show import progress, and skip unreadable files. You can also add pictures individually, or click a numbered tile to assign or replace its picture. Entry numbers identify pictures; cards display images rather than numbers by default.
 
 - **Picture bingo:** any picture can go in any square. Requires 24 images with a free center, or 25 without.
 - **Classic 75-ball:** pictures correspond to numbers 1–75. B draws from 1–15, I from 16–30, N from 31–45, G from 46–60, O from 61–75. Each column needs at least five assigned pictures (four for N when using the free center). Assign all 75 for a full standard game.

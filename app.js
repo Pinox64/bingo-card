@@ -16,11 +16,43 @@ $('shuffle').onclick=makePreview;
 $('add').onclick=()=>{if(entries.length>=300){message('The image pool supports up to 300 entries.');return;}entries.push(null);rebuild();};
 $('clear').onclick=()=>{entries=entries.map(()=>null);rebuild();makePreview();message('Pictures cleared.');};
 $('mode').onchange=()=>{if($('mode').value==='classic'){if(entries.length>75&&entries.slice(75).some(Boolean)){message('Classic mode uses only entries 1–75. Your extra entries are retained when you return to picture mode.');}while(entries.length<75)entries.push(null);}rebuild();makePreview();};
-$('bulk').onchange=async()=>{const files=Array.from($('bulk').files).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));let added=0,errors=0;for(const file of files){let i=entries.findIndex(e=>!e);if(i<0){if($('mode').value==='classic'||entries.length>=300)break;i=entries.length;entries.push(null);}try{entries[i]=await readImage(file);added++;}catch{errors++;}}rebuild();makePreview();message(`${added} pictures added.${errors?' '+errors+' unsupported images skipped.':''}${added+errors<files.length?' Image pool limit reached.':''}`);$('bulk').value='';};
+let uploading=false;
+async function uploadImages(selection){
+  if(uploading||busy)return;
+  const files=Array.from(selection).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+  if(!files.length)return;
+  uploading=true;
+  const classic=$('mode').value==='classic';
+  const controls=Array.from(document.querySelectorAll('input, select, button'));
+  const previous=controls.map(el=>el.disabled);
+  controls.forEach(el=>el.disabled=true);
+  let added=0,errors=0,processed=0;
+  try{
+    for(const file of files){
+      let i=entries.findIndex((e,index)=>!e&&(!classic||index<75));
+      if(i<0){if(classic||entries.length>=300)break;i=entries.length;}
+      $('upload-status').textContent=`Importing ${processed+1} of ${files.length}: ${file.name}`;
+      try{const entry=await readImage(file);entries[i]=entry;added++;}catch{errors++;}
+      processed++;
+    }
+    rebuild();makePreview();
+    const result=`${added} pictures added.${errors?' '+errors+' unsupported or unreadable files skipped.':''}${processed<files.length?' '+(files.length-processed)+' files not added: image pool limit reached.':''}`;
+    $('upload-status').textContent=result;message(result);
+  }finally{
+    controls.forEach((el,i)=>el.disabled=previous[i]);
+    $('bulk').value='';uploading=false;
+  }
+}
+$('bulk-pick').onclick=()=>$('bulk').click();
+$('bulk').onchange=()=>uploadImages($('bulk').files);
+const uploadZone=$('upload-zone');
+for(const type of ['dragenter','dragover'])uploadZone.addEventListener(type,event=>{event.preventDefault();if(!uploading&&!busy)uploadZone.classList.add('drag-over');});
+for(const type of ['dragleave','drop'])uploadZone.addEventListener(type,event=>{event.preventDefault();uploadZone.classList.remove('drag-over');});
+uploadZone.addEventListener('drop',event=>uploadImages(event.dataTransfer.files));
 for(const id of ['title','font','ink','paper','accent','fit','size','free-text','numbers'])$(id).addEventListener('input',render);
 $('free').onchange=makePreview;
 $('font-file').onchange=async()=>{try{const file=$('font-file').files[0];if(!file)return;const data=await file.arrayBuffer();const font=new FontFace('BingoCustom',data);await font.load();document.fonts.add(font);customFont={name:file.name,data:await new Promise(resolve=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.readAsDataURL(file);})};let opt=$('font').querySelector('[value="BingoCustom"]');if(!opt){opt=new Option('Your custom font','BingoCustom');$('font').add(opt);}$('font').value='BingoCustom';render();}catch{message('Could not load that font. Try a TTF, OTF, or WOFF file.');}};
-$('download').onclick=async()=>{if(busy)return;try{const count=Number($('count').value),classic=$('mode').value==='classic';const available=ids().filter(i=>!classic||i<75);const cards=Bingo.generate(available,classic,$('free').checked,count);busy=true;$('download').disabled=true;await document.fonts.ready;const canvas=document.createElement('canvas'),pages=[];for(let i=0;i<cards.length;i++){message(`Preparing card ${i+1} of ${count}…`);draw(canvas,cards[i],i+1);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.94));if(!blob)throw Error('Unable to render PDF page.');pages.push({bytes:new Uint8Array(await blob.arrayBuffer()),width:canvas.width,height:canvas.height});await new Promise(resolve=>setTimeout(resolve,0));}const a4=$('size').value==='a4';download(Bingo.pdf(pages,a4?595.28:612,a4?841.89:792),'picture-bingo-cards.pdf');message(`${count} unique cards exported. Your PDF is ready.`);}catch(e){message(e.message);}finally{busy=false;$('download').disabled=false;}};
+$('download').onclick=async()=>{if(busy||uploading)return;try{const count=Number($('count').value),classic=$('mode').value==='classic';const available=ids().filter(i=>!classic||i<75);const cards=Bingo.generate(available,classic,$('free').checked,count);busy=true;$('download').disabled=true;await document.fonts.ready;const canvas=document.createElement('canvas'),pages=[];for(let i=0;i<cards.length;i++){message(`Preparing card ${i+1} of ${count}…`);draw(canvas,cards[i],i+1);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.94));if(!blob)throw Error('Unable to render PDF page.');pages.push({bytes:new Uint8Array(await blob.arrayBuffer()),width:canvas.width,height:canvas.height});await new Promise(resolve=>setTimeout(resolve,0));}const a4=$('size').value==='a4';download(Bingo.pdf(pages,a4?595.28:612,a4?841.89:792),'picture-bingo-cards.pdf');message(`${count} unique cards exported. Your PDF is ready.`);}catch(e){message(e.message);}finally{busy=false;$('download').disabled=false;}};
 $('save').onclick=()=>{const data={version:1,settings:settings(),count:$('count').value,customFont,entries:entries.map(e=>e?{name:e.name,src:e.src}:null)};download(new Blob([JSON.stringify(data)],{type:'application/json'}),'picture-bingo-project.json');message('Project saved, including your pictures and custom font.');};
 $('load').onchange=async()=>{try{const file=$('load').files[0];if(!file)return;if(file.size>150*1024*1024)throw Error('Project is too large (maximum 150 MB).');const data=JSON.parse(await file.text());if(data.version!==1||!Array.isArray(data.entries)||data.entries.length<25||data.entries.length>300||!data.settings)throw Error('Invalid project file.');const loaded=await Promise.all(data.entries.map(async e=>{if(!e)return null;if(typeof e.src!=='string'||!/^data:image\/(png|jpeg|webp);base64,/.test(e.src))throw Error('Project contains an unsupported image.');return {name:String(e.name||'Picture'),src:e.src,img:await loadImage(e.src)};}));if(data.customFont){if(!/^data:[^,]*;base64,/.test(data.customFont.data))throw Error('Invalid saved font.');const bytes=Uint8Array.from(atob(data.customFont.data.split(',')[1]),c=>c.charCodeAt(0));const face=new FontFace('BingoCustom',bytes);await face.load();document.fonts.add(face);if(!$('font').querySelector('[value="BingoCustom"]'))$('font').add(new Option('Your custom font','BingoCustom'));}customFont=data.customFont||null;entries=loaded;for(const [key,value]of Object.entries(data.settings)){const el=$(key);if(!el||!['mode','title','font','ink','paper','accent','fit','size','free-text','free','numbers'].includes(key))continue;if(el.type==='checkbox')el.checked=Boolean(value);else el.value=String(value);}if(!['pool','classic'].includes($('mode').value))$('mode').value='pool';if($('mode').value==='classic')while(entries.length<75)entries.push(null);$('count').value=Math.max(1,Math.min(100,Number(data.count)||20));rebuild();makePreview();message('Project restored.');}catch(e){message('Could not open project: '+e.message);}finally{$('load').value='';}};
 $('demo').onclick=async()=>{const symbols=['🌻','🍓','🍋','🥑','🍇','🥕','🌽','🥦','🍒','🍍','🍎','🍐','🍉','🍊','🥝','🍄','🌵','🌴','🌷','🌹','🍀','🍁','🦋','🐝','🐞','🐢','🐟','🐬','🦉','🦊','🐸','🐼','🐨','🦁','🐯','🐰','🐧','🐳','🦀','🐙','⭐','🌙','☀️','🌈','⛅'];const amount=$('mode').value==='classic'?75:30;entries=[];for(let i=0;i<amount;i++){const c=document.createElement('canvas');c.width=400;c.height=400;const ctx=c.getContext('2d');ctx.fillStyle=['#f6e8ce','#e8efd9','#e5ecf0','#f3e1dc','#ece6f2'][i%5];ctx.fillRect(0,0,400,400);ctx.font='210px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(symbols[i%symbols.length],200,190);if(i>=symbols.length){ctx.font='38px Arial';ctx.fillStyle='#354b3d';ctx.fillText(String(i+1),200,345);}const src=c.toDataURL();entries.push({name:'Sample '+(i+1),src,img:await loadImage(src)});}rebuild();makePreview();message('Sample pictures loaded. Replace any picture with your own.');};
